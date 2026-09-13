@@ -22,8 +22,8 @@ export default function ChapterPage({
         source={content}
         options={{
           mdxOptions: {
-            remarkPlugins: [remarkGfm],
-            rehypePlugins: [rehypeHighlight],
+            remarkPlugins: [remarkGfm as any],
+            rehypePlugins: [rehypeHighlight as any],
           },
         }}
       />
