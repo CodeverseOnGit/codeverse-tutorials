@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  basePath: '/cloud-native-development',
   async redirects() {
     return [
       {
