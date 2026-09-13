@@ -29,7 +29,4 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  pages: {
-    signIn: '/cloud-native-development/studio/signin',
-  },
 };
