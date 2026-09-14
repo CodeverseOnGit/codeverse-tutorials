@@ -5,11 +5,16 @@ export function generateStaticParams() {
   return getTracks().map((t) => ({ track: t.slug }));
 }
 
-export default function TrackIndexPage({ params }: { params: { track: string } }) {
-  const track = getTrack(params.track);
+export default async function TrackIndexPage({
+  params,
+}: {
+  params: Promise<{ track: string }>;
+}) {
+  const { track: trackSlug } = await params;
+  const track = getTrack(trackSlug);
   if (!track) return notFound();
 
-  const modules = getNavTree(params.track);
+  const modules = getNavTree(trackSlug);
 
   return (
     <div>

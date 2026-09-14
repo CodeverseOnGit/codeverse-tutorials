@@ -16,12 +16,13 @@ export function generateStaticParams() {
   });
 }
 
-export default function ChapterPage({
+export default async function ChapterPage({
   params,
 }: {
-  params: { track: string; module: string; chapter: string };
+  params: Promise<{ track: string; module: string; chapter: string }>;
 }) {
-  const data = getChapter(params.track, params.module, params.chapter);
+  const { track, module: moduleSlug, chapter } = await params;
+  const data = getChapter(track, moduleSlug, chapter);
   if (!data) return notFound();
 
   const { meta, content } = data;

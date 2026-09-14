@@ -2,17 +2,18 @@ import { getNavTree, getTrack } from '@/lib/content';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-export default function TrackLayout({
+export default async function TrackLayout({
   children,
   params,
 }: {
   children: React.ReactNode;
-  params: { track: string };
+  params: Promise<{ track: string }>;
 }) {
-  const track = getTrack(params.track);
+  const { track: trackSlug } = await params;
+  const track = getTrack(trackSlug);
   if (!track) return notFound();
 
-  const modules = getNavTree(params.track);
+  const modules = getNavTree(trackSlug);
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
@@ -25,7 +26,7 @@ export default function TrackLayout({
             <ul style={{ listStyle: 'none', paddingLeft: 8 }}>
               {m.chapters.map((c) => (
                 <li key={c.slug}>
-                  <Link href={`/${params.track}/${m.slug}/${c.slug}`}>
+                  <Link href={`/${trackSlug}/${m.slug}/${c.slug}`}>
                     {c.title}
                   </Link>
                 </li>
