@@ -195,11 +195,11 @@ far easier to reason about later.
 Set up a throwaway Linux environment (a cloud VM, a local VM, or WSL
 on Windows) and complete this checklist:
  
-- [ ] Navigate the filesystem using only the shell for 30 minutes — no GUI file manager
-- [ ] Start a background process, find its PID, and kill it
-- [ ] Create a file, change its permissions so only you can execute it, then run it
-- [ ] Run `curl -v` against three different websites and identify the DNS, TCP, and HTTP portions of the output
-- [ ] Use `ss -tulpn` to find every port currently listening on your machine, and identify what's using each one
+- Navigate the filesystem using only the shell for 30 minutes — no GUI file manager
+- Start a background process, find its PID, and kill it
+- Create a file, change its permissions so only you can execute it, then run it
+- Run `curl -v` against three different websites and identify the DNS, TCP, and HTTP portions of the output
+- Use `ss -tulpn` to find every port currently listening on your machine, and identify what's using each one
 
 
 ## What to build by the end
@@ -227,53 +227,126 @@ concept) to back up your argument.
 
 ## Quiz: check your understanding
  
-**1. Which command shows you what's currently listening on a given port?**
-- a) `ps aux`
-- b) `ss -tulpn`
-- c) `chmod +x`
-- d) `dig`
-**2. You run `chmod +x deploy.sh`. What did you just do?**
-- a) Deleted the file
-- b) Changed the file's owner
-- c) Made the file executable
-- d) Compressed the file
-**3. What does DNS actually do?**
-- a) Encrypts network traffic
-- b) Translates domain names into IP addresses
-- c) Manages file permissions
-- d) Assigns ports to processes
-**4. `tail -f access.log` is most similar in purpose to which later cloud native command?**
-- a) `docker build`
-- b) `kubectl logs -f`
-- c) `helm install`
-- d) `terraform apply`
-**5. A teammate says "the service is up but nothing responds on port 8080." What's the first thing you should check?**
-- a) Rewrite the app in a different language
-- b) Whether anything is actually listening on port 8080 (`ss -tulpn`)
-- c) Delete and recreate the VM
-- d) Check the DNS records only
-**6. In `ls -l app.py` output showing `-rwxr-xr--`, who can execute the file?**
-- a) Only the owner
-- b) Owner and group
-- c) Everyone
-- d) No one
-**7. Why does this chapter matter for container security later (Module 8)?**
-- a) Containers don't use Linux permissions at all
-- b) Running processes as root inside a container extends the same Linux permission risks you saw here
-- c) Kubernetes replaces the need for file permissions entirely
-- d) It doesn't — they're unrelated topics
+These aren't "find it on the page" questions — they ask you to reason
+through a scenario the way you'd actually have to on the job. Ranked
+roughly easy → hard.
+ 
+### Easy
+ 
+**1. A teammate says: "It works when I run it locally as root, but fails in the container." Before touching any code, what's the most likely category of problem, and why?**
+- a) The container has less CPU than their laptop
+- b) A permissions mismatch — the container almost certainly isn't running as root, and something the app touches (a file, a socket, a port under 1024) requires elevated privileges
+- c) The container doesn't have internet access
+- d) Their code has a syntax error that only appears in Linux
+
+**2. In `ls -l app.py` output showing `-rwxr-xr--`, a new file `deploy.sh` needs the same access level, except nobody outside the owner and group should be able to even read it. What permission bits do you actually want, and why not just copy `app.py`'s?**
+- a) Same bits are fine, permissions don't matter for scripts
+- b) `-rwxr-x---` — drop the trailing read bit entirely, since "everyone" currently has read access you don't want
+- c) `-rwxrwxrwx` — always grant full access so it definitely runs
+- d) Permissions are irrelevant; only the file extension controls who can run it
+
+**3. You run `curl -v https://api.example.com` and it hangs with no output at all — not even a DNS resolution line. What does that tell you, and what would you check next?**
+- a) The API is down — check the app logs
+- b) It's almost certainly not a DNS or HTTP problem yet, since it never got that far — check basic network connectivity or a firewall/proxy blocking the connection first
+- c) The SSL certificate is invalid
+- d) `curl` itself is broken and needs reinstalling
+
+**4. If you wanted to prove to a skeptical teammate that "everything on Linux is a process" isn't just a slogan, what's the simplest experiment you could run right now?**
+- a) Read the Linux kernel source code
+- b) Run `ps aux` in one terminal, start something long-running like `sleep 300` in another, and watch it appear with its own PID
+- c) Reboot the machine and see what changes
+- d) There's no way to demonstrate this without special tools
+
+
+### Medium
+ 
+**5. You have two options to debug a "connection refused" error: run `ss -tulpn` on the target server, or add more application-level logging and redeploy. Which should you reach for first, and why?**
+- a) Redeploy with more logs — you always want more application data
+- b) `ss -tulpn` — "connection refused" specifically means the OS rejected the connection because nothing is listening, which is a network-layer fact your application code can't tell you no matter how much you log
+- c) Neither — restart the server and see if it fixes itself
+- d) Check the DNS records, since that's always the root cause
+
+**6. Why might a junior engineer's instinct to `chmod 777` a file to "fix" a permissions error actually be a bad long-term habit, even though it works?**
+- a) `777` doesn't actually change permissions
+- b) It grants read/write/execute to literally everyone, silently widening the security surface instead of identifying which specific user or group actually needed access
+- c) It only works on macOS, not Linux
+- d) It makes the file execute slower
+
+**7. You've just learned that `tail -f` and `kubectl logs -f` share the same underlying idea. Given that, what would you predict `docker logs -f` does, without looking it up?**
+- a) Something completely unrelated — Docker's logging works differently
+- b) Streams a container's log output continuously, the same "follow as it's written" pattern
+- c) Deletes old logs to save space
+- d) Only shows logs from the last 5 minutes
+
+**8. A `ping google.com` succeeds with low latency, but `curl https://google.com` times out. Given that ping and curl use different network protocols, what does this combination most likely rule out?**
+- a) It rules out a basic network/routing problem, since raw connectivity works — the issue is more likely something specific to TCP/HTTP(S), like a blocked port or a proxy
+- b) It proves your internet is completely down
+- c) It proves DNS is broken
+- d) It means your computer's clock is wrong
+
+**9. You're told a service "sometimes" fails to start with a port-binding error. What Linux-level explanation would you investigate before assuming it's a bug in the app's code?**
+- a) The app's code is definitely the only possible cause
+- b) Something else — maybe a leftover or crashed previous instance — might still be holding that port open, and a new process can't bind to a port that's already in use
+- c) The disk is full
+- d) The app needs more RAM
+
+**10. Two files have identical permission bits (`-rw-r--r--`) but one is owned by `root` and the other by your own user. Why can this difference matter more than the permission bits themselves in practice?**
+- a) It never matters — permission bits are all that count
+- b) Even with identical bits, only the owner (or root) can change the permissions or delete the file outright; ownership determines who controls the file, not just who can read/write it
+- c) File ownership is purely cosmetic metadata
+- d) Ownership only affects file size
+
+
+### Hard
+ 
+**11. If Linux processes and permissions are the foundation containers build on, what's one Linux limitation you'd guess containers had to solve — before you've been taught the answer in Module 2?**
+- a) Linux processes can't be killed
+- b) By default, one process can see and potentially interfere with every other process and file on the same machine — containers needed some way to isolate a process's view of the system
+- c) Linux doesn't support networking natively
+- d) Linux can't run more than one program at a time
+
+**12. `traceroute` shows a request reaching hop 7 of 9 and then stalling, with no response from hops 8 or 9. Is it safe to conclude hop 8 is the broken machine? Why or why not?**
+- a) Yes, definitively — the trace proves hop 8 is down
+- b) Not necessarily — many routers are configured to silently drop or deprioritize the ICMP packets traceroute relies on, so a missing hop can mean "this router doesn't respond to traceroute," not "this router is broken"
+- c) No, traceroute only works for DNS issues
+- d) Yes, but only if you also run `ping` first
+
+**13. A service works fine when you `curl` it directly by IP, but fails when you use its domain name. Both DNS and the service itself are confirmed working independently. What class of problem does this combination point toward?**
+- a) The service's code has a bug
+- b) Something specific to how the request is routed or handled based on hostname — e.g. a virtual host / SNI mismatch, or a load balancer routing rule keyed on the domain — rather than basic connectivity or DNS resolution, both of which you've already ruled out
+- c) The internet connection is unstable
+- d) The IP address is wrong
+
+**14. You have root access on a server and could technically fix any permissions issue by just becoming root and doing whatever's needed. Why do experienced engineers still avoid working as root for routine tasks, even when it would be faster?**
+- a) Root access doesn't actually grant extra capability
+- b) Working as root removes the safety net permissions normally provide — a typo in a command as root can silently delete or corrupt things a regular user physically couldn't touch, with no error to stop you
+- c) Root accounts are always disabled by default so it's a non-issue
+- d) It's purely a stylistic convention with no real consequence
+
+**15. Two different processes both need to listen on port 443 on the same machine. What does Linux's networking model say about whether this is possible, and what would actually need to change to run two services that both "want" 443?**
+- a) It's fine — Linux allows unlimited processes to share any port
+- b) By default, only one process can bind to a given port on a given IP at a time — to run two services that both want 443, you'd need something in front of them (a reverse proxy) routing to different backend ports, or bind them to different IPs
+- c) Ports are unlimited resources with no binding restrictions
+- d) You'd need to recompile the Linux kernel to allow this
 ---
  
 ### Answer key
  
-1. b — `ss -tulpn` lists listening sockets with process info.
-2. c — `chmod +x` adds the execute permission bit.
-3. b — DNS resolves human-readable names to IP addresses.
-4. b — both are "follow the live output" patterns for logs.
-5. b — always confirm the process/port is actually listening before assuming anything else is broken.
-6. b — the `r-x` in the group segment means the group can read and execute, alongside the owner's `rwx`.
-7. b — container root is still Linux root under the hood; the same privilege risks apply, just inside a more isolated filesystem view.
-
+1. b — the classic "works with elevated privileges locally, fails under a restricted runtime user" pattern; you'll hit this constantly once containers add their own non-root defaults in Module 2.
+2. b — dropping the "others" read bit is the actual fix; blindly copying another file's permissions ignores what you're really trying to restrict.
+3. b — a hang with zero output means the request never even got far enough to fail at DNS or HTTP; something lower-level is blocking it.
+4. b — directly observing a process appear with a PID is the simplest live proof of the "everything is a process" model.
+5. b — "connection refused" is an OS-level signal, not an application-level one; no amount of app logging will surface a fact the application never even received.
+6. b — the specific, minimal permission is almost always the safer and more diagnosable fix; `777` trades a five-minute investigation for a standing security liability.
+7. b — same underlying "follow mode" concept, just implemented for a container's stdout/stderr instead of a file.
+8. a — ping succeeding tells you basic network reachability is fine, narrowing the problem toward something TCP/HTTP-specific rather than routing.
+9. b — a stale process still holding the port is one of the most common causes of "sometimes fails to start," and it's a Linux-level fact, not a code bug.
+10. b — ownership controls who can change permissions or delete the file at all, which matters more than the read/write bits in many real incidents.
+11. b — process isolation (namespaces) is exactly the gap containers fill; if you predicted something in this direction, you're already thinking the way the next module wants you to.
+12. b — traceroute's "missing hop" is a famously misleading signal; treating it as proof of failure is a common but incorrect assumption.
+13. b — ruling out DNS and basic connectivity independently narrows the problem specifically to hostname-based routing/handling, a subtler and more specific class of bug.
+14. b — root removes Linux's normal permission guardrails entirely, which is exactly why routine root use is considered risky regardless of your intentions.
+15. b — Linux's port-binding model only allows one listener per IP:port combination by default; this is the exact problem reverse proxies and ingress controllers solve later in the path.
 
 ## Potential New Keywords learned
 Docker, kubernetes, CI runners, `docker run` command, namespaces, cgroups, kubernetes pod,
