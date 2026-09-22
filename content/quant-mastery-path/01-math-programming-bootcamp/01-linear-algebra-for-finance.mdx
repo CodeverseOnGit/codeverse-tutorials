@@ -1,0 +1,398 @@
+---
+title: "Linear Algebra for Finance"
+module: 1
+chapter: 1
+milestone: false
+articlePrompt: "Why every risk model is secretly a matrix"
+---
+
+## Why this chapter exists
+
+Every number a risk desk, a portfolio manager, or a pricing engine
+produces — portfolio variance, VaR, factor exposures, the beta in a
+CAPM regression — comes out of a handful of linear algebra operations
+repeated at scale. `numpy.cov()`, `sklearn`'s `PCA`, a risk system's
+"covariance matrix," an options desk's Greeks aggregated across a
+book: all of it is vectors, matrices, and eigenvalues wearing a
+finance costume.
+
+This matters practically: when a portfolio's risk number looks wrong,
+or a regression's coefficients don't make sense, or a "risk factor"
+model outputs nonsense, the debugging skill you reach for is not
+"read the pandas docs harder." It's "what shape is this matrix, is it
+symmetric, is it positive semi-definite, did I multiply the wrong
+axis." That skill is linear algebra. Skip this chapter and every later
+module — CAPM, portfolio theory, backtesting, factor models — will
+feel like memorized formulas instead of things you actually understand.
+
+## What you'll be able to do after this chapter
+
+- Represent a portfolio, a set of returns, or a factor exposure as a
+  vector, and reason about what operations on it actually mean
+- Build and interpret a covariance matrix from return data
+- Understand eigenvalues/eigenvectors well enough to know what PCA on
+  a return series is actually doing (Module 6, Module 11)
+- Use `numpy` fluently for the linear algebra you'll run constantly:
+  `@`, `np.cov`, `np.linalg.eig`, `np.linalg.inv`
+
+---
+
+## 1. A portfolio is a vector
+
+A portfolio isn't a spreadsheet row — it's a vector of weights. If you
+hold 4 assets, your portfolio is `w = [0.4, 0.3, 0.2, 0.1]`. Returns
+for those same assets on a given day are another vector,
+`r = [0.01, -0.02, 0.005, 0.03]`. Your portfolio's return that day is
+just a dot product: `w · r`.
+
+```python
+import numpy as np
+
+w = np.array([0.4, 0.3, 0.2, 0.1])   # portfolio weights
+r = np.array([0.01, -0.02, 0.005, 0.03])  # daily returns per asset
+
+portfolio_return = w @ r   # dot product: 0.007
+```
+
+This is the single most-repeated operation in quant finance. Every
+"portfolio return," "factor exposure," and "P&L attribution" number
+you'll ever compute is some variation of `weights · something`.
+
+---
+
+## 2. Matrices: when one vector isn't enough
+
+A single day of returns is a vector. A history of returns — many
+assets, many days — is a matrix: rows are time, columns are assets.
+
+```python
+# 5 days, 3 assets
+returns = np.array([
+    [0.01,  0.02, -0.01],
+    [-0.02, 0.01,  0.00],
+    [0.015, 0.00,  0.02],
+    [0.00, -0.01,  0.01],
+    [0.02,  0.015, -0.005],
+])
+
+returns.shape   # (5, 3) -> (time, assets)
+```
+
+**Why this matters for later chapters**: almost every quant dataset —
+tick data, factor exposures, order books — gets represented this way.
+Getting comfortable asking "what does each axis of this matrix mean?"
+now will save you hours of silent bugs later, where you accidentally
+compute statistics across the wrong axis and get a confidently wrong
+answer.
+
+---
+
+## 3. The covariance matrix: risk's core object
+
+If returns are a matrix, the covariance matrix is what turns "how did
+each asset move" into "how do assets move *together*" — which is the
+entire basis of diversification, portfolio variance, and VaR.
+
+```python
+cov_matrix = np.cov(returns, rowvar=False)   # rowvar=False: columns are assets
+# a 3x3 matrix: cov_matrix[i][j] is how asset i and asset j move together
+```
+
+Reading it: the diagonal (`cov_matrix[i][i]`) is each asset's own
+variance. Off-diagonal entries tell you co-movement — near zero means
+assets move independently (good for diversification), large and
+positive means they move together (bad — you're not as diversified as
+your asset *count* suggests).
+
+Portfolio variance, the number underneath every VaR calculation in
+Module 8, is one matrix expression:
+
+```python
+portfolio_variance = w @ cov_matrix @ w
+portfolio_vol = np.sqrt(portfolio_variance)
+```
+
+That `w @ Σ @ w` pattern (Σ is the standard notation for a covariance
+matrix) is worth memorizing now — you will retype it, in some form,
+in nearly every module from here to the capstone.
+
+---
+
+## 4. Eigenvalues and eigenvectors: finding the "real" moves
+
+An eigenvector of a matrix is a direction that the matrix doesn't
+rotate — it only stretches it, by a factor called the eigenvalue.
+Applied to a covariance matrix, this stops being abstract fast: the
+eigenvectors are the *independent directions of risk* in your
+portfolio, and the eigenvalues tell you how much variance each
+direction explains.
+
+```python
+eigenvalues, eigenvectors = np.linalg.eig(cov_matrix)
+```
+
+This is exactly what PCA (Principal Component Analysis) does under
+the hood — and it's why, when a risk report says "the first principal
+component explains 80% of portfolio variance," it means: one
+eigenvector of the covariance matrix, ranked by its eigenvalue,
+accounts for 80% of total risk. You don't need to compute this by
+hand ever again after today — but you do need to know it's an
+eigenvalue problem, or PCA output in Module 6 and Module 11 will look
+like a magic trick instead of a matrix fact.
+
+---
+
+## 5. Putting it together: a mini risk report
+
+Here's a scenario you'll rebuild constantly in more sophisticated
+form: "given a portfolio and its return history, what's its risk?"
+
+```python
+import numpy as np
+
+# 1. Historical returns: 4 assets, 100 days
+returns = np.random.normal(0.0005, 0.01, size=(100, 4))
+
+# 2. Portfolio weights
+w = np.array([0.4, 0.3, 0.2, 0.1])
+
+# 3. Covariance matrix of asset returns
+cov_matrix = np.cov(returns, rowvar=False)
+
+# 4. Portfolio variance and volatility
+portfolio_variance = w @ cov_matrix @ w
+portfolio_vol = np.sqrt(portfolio_variance)
+
+# 5. Which asset dominates portfolio risk? (marginal contribution)
+marginal_contribution = cov_matrix @ w
+```
+
+This five-step sequence — returns matrix, weights vector, covariance
+matrix, portfolio variance, marginal risk contribution — is the exact
+skeleton you'll expand into real VaR and risk-attribution systems in
+Module 8. Learning it here, with clean synthetic data and no live
+market-data complexity, makes it far easier to reason about later.
+
+---
+
+## Try it yourself
+
+Set up a Python environment (`numpy` is enough for this chapter) and
+complete this checklist:
+
+- [ ] Build a 3-asset return vector by hand and compute its dot
+  product with a weights vector
+- [ ] Load or simulate a returns matrix and compute its covariance
+  matrix with `np.cov`
+- [ ] Compute portfolio variance and volatility using `w @ Σ @ w`
+- [ ] Run `np.linalg.eig` on your covariance matrix and identify which
+  eigenvector has the largest eigenvalue
+- [ ] Change one asset's weight and observe how portfolio volatility
+  moves — build intuition for diversification
+
+## What to build by the end
+
+**A personal quant-math cheat-sheet repo.** Create a public GitHub
+repo (you'll extend this in every later module) containing a
+`LINALG_CHEATSHEET.md` with the 10 operations you now use most, each
+with:
+
+- the numpy expression
+- what it computes in one line
+- a real example run on synthetic data, with actual output pasted in
+
+This isn't busywork — you'll extend this same repo with statistics,
+options-pricing, and backtesting cheat-sheets in later modules,
+building a reference you'll genuinely reach for in interviews.
+
+## Write about it
+
+**"Why every risk model is secretly a matrix"** — now that you've seen
+how portfolio return, portfolio variance, and PCA are all just dot
+products, matrix multiplications, and eigenvalue decompositions, write
+a short article arguing for or against this claim: quantitative
+finance is fundamentally applied linear algebra with financial
+vocabulary layered on top. Use at least one concrete example from this
+chapter (an equation, a numpy expression) to back up your argument.
+
+---
+
+## Quiz: check your understanding
+
+These aren't "find it on the page" questions — they ask you to reason
+through a scenario the way you'd actually have to on the job. Ranked
+roughly easy → hard.
+
+### Easy
+
+**1. You have portfolio weights `w = [0.5, 0.5]` and daily returns `r = [0.02, -0.01]`. What's the portfolio's return, and what operation computes it?**
+- a) You add the two returns together: 0.01
+- b) You take the dot product `w · r`: (0.5)(0.02) + (0.5)(-0.01) = 0.005
+- c) You multiply the weights together
+- d) You need the covariance matrix first
+
+**2. A returns matrix has shape `(250, 10)`. What do the two dimensions most likely represent, and why does the order matter?**
+- a) 250 assets and 10 days — order never matters
+- b) 250 trading days and 10 assets; getting this backwards means every downstream calculation (covariance, portfolio variance) silently operates on the wrong axis
+- c) It's always assets first, days second, by convention with no exceptions
+- d) The shape is irrelevant as long as the total count matches
+
+**3. In a covariance matrix, what does a large positive off-diagonal entry between asset A and asset B tell you, and why does it matter for diversification?**
+- a) Asset A and B are unrelated — nothing to worry about
+- b) A and B tend to move together, meaning holding both doesn't reduce risk as much as holding two independent assets would
+- c) Asset A causes asset B's price to move
+- d) One of the assets has an error in its data
+
+**4. You compute `np.cov(returns, rowvar=False)` versus `np.cov(returns)` (default) on the same 100x4 returns matrix and get very different results. What's going on?**
+- a) `np.cov` is broken and you should use a different library
+- b) `rowvar` controls whether rows or columns are treated as variables; with 100 rows (days) and 4 columns (assets), the default treats each of the 100 days as a separate "variable," which is not what you want
+- c) The two calls are actually identical, you made an error
+- d) `rowvar=False` should never be used in quant finance
+
+### Medium
+
+**5. Portfolio variance is computed as `w @ cov_matrix @ w`. If you accidentally pass in a covariance matrix built from prices instead of returns, what would you expect to go wrong, and why?**
+- a) Nothing — prices and returns produce the same covariance structure
+- b) The resulting "variance" would be wildly inflated and not meaningfully interpretable as risk, since price levels trend and have much larger absolute variance than returns, which are the actual quantity risk models are built on
+- c) The calculation would throw a dimension error
+- d) It only matters for options, not portfolio variance
+
+**6. Two eigenvectors of a covariance matrix have eigenvalues 0.08 and 0.001. In portfolio-risk terms, what does the size difference tell you?**
+- a) The eigenvalues don't carry meaning by themselves
+- b) The first eigenvector's direction explains vastly more of the portfolio's variance than the second — this is exactly what "the first principal component explains most of the risk" means
+- c) The second eigenvector is an error and should be discarded
+- d) Eigenvalues only matter for square matrices with more than 2 assets
+
+**7. You're told "increase diversification" and your instinct is to just add more assets to the portfolio, regardless of correlation. Using what you now know about covariance matrices, why might this not actually reduce risk?**
+- a) Adding more assets always reduces risk regardless of correlation
+- b) If the new assets have high positive covariance with existing holdings, the off-diagonal terms in `w @ Σ @ w` can keep portfolio variance nearly unchanged even though the asset count went up
+- c) More assets always increases transaction costs, which is the only downside
+- d) Covariance matrices only apply to portfolios with fewer than 10 assets
+
+**8. A marginal contribution to risk is computed as `cov_matrix @ w`. Why is this a vector rather than a single number, and what does each entry mean?**
+- a) It's a mistake — it should always be reduced to one number
+- b) Each entry tells you how much a one-unit increase in that specific asset's weight would move total portfolio variance, which is exactly why risk desks use it to find which position is quietly dominating a book's risk
+- c) It's a vector purely due to a numpy formatting convention with no real meaning
+- d) Each entry represents that asset's individual (standalone) variance
+
+**9. You compute a correlation matrix instead of a covariance matrix for the same return data. What's the actual mathematical relationship between the two, and when would you prefer one over the other?**
+- a) They're identical; the names are just historical artifacts
+- b) Correlation is covariance normalized by the product of each asset's standard deviation, bounded between -1 and 1; you'd prefer correlation when comparing co-movement across assets with very different volatility scales, and covariance when you need the actual variance units for a calculation like `w @ Σ @ w`
+- c) Correlation only works for two assets at a time, never a full matrix
+- d) Covariance is just correlation multiplied by the number of assets
+
+### Hard
+
+**10. If eigenvalues and eigenvectors are the "independent directions of risk" in a covariance matrix, what's one limitation you'd guess PCA-based risk models have — before being taught the answer in Module 6 or 11?**
+- a) PCA can't be computed on matrices larger than 10x10
+- b) PCA assumes the covariance structure is stable over the sample used to estimate it; if correlations shift in a crisis (assets that were independent suddenly move together), the eigenvector directions computed on historical data may no longer describe current risk
+- c) PCA only works on price data, never returns
+- d) Eigenvalues can never be negative, so PCA has no real limitations
+
+**11. Two different portfolios have the same `w @ Σ @ w` (identical portfolio variance) but very different weight vectors and different underlying covariance matrices. Is it safe to say the two portfolios have identical risk in every sense?**
+- a) Yes, identical portfolio variance means identical risk, full stop
+- b) Not necessarily — equal variance doesn't mean equal tail risk, equal exposure to any single eigenvector/factor, or equal sensitivity to a specific asset blowing up; variance is one summary statistic, not the whole risk picture
+- c) No, because portfolio variance is never comparable across different portfolios
+- d) Yes, but only if both portfolios have the same number of assets
+
+**12. A covariance matrix computed from only 10 days of return history for 50 assets is very likely to be near-singular (not invertible). Why does this happen mathematically, and why does it matter for anything requiring `np.linalg.inv(cov_matrix)`?**
+- a) It never happens — covariance matrices are always invertible
+- b) With fewer observations (10) than assets (50), the sample covariance matrix is rank-deficient by construction, so it has zero (or near-zero) eigenvalues, making it singular or numerically unstable to invert — a real problem for anything (like some portfolio optimization) that requires the matrix inverse
+- c) Singularity only affects the diagonal entries, not usability
+- d) You can always fix this by using `rowvar=False`
+
+**13. You're asked to justify, without running code, why `w @ cov_matrix @ w` produces a single scalar number even though `cov_matrix` is a full matrix. Walk through the shapes: if `w` is a vector of length n and `cov_matrix` is n×n, what are the dimensions at each multiplication step, and why does the result collapse to one number?**
+- a) It doesn't actually collapse to one number — it stays a matrix
+- b) `cov_matrix @ w` produces a length-n vector (n×n times n×1); then `w @ (that vector)` is a dot product of two length-n vectors, which always collapses to a scalar — this is exactly why portfolio variance is a single number even though the matrix in the middle carries all pairwise information
+- c) The dimensions only work out for 2x2 matrices
+- d) You need to transpose `w` first or the operation is undefined
+
+**14. Given everything in this chapter, predict — before Module 8 teaches it explicitly — what "Value at Risk" (VaR) is likely built from, at a mathematical level.**
+- a) VaR is unrelated to covariance matrices or portfolio variance
+- b) VaR is very likely portfolio volatility (from `w @ Σ @ w`) scaled by a distributional assumption (like a normal-distribution quantile) to answer "how much could this portfolio lose, with some confidence level, over some time horizon" — i.e., it's built directly on the machinery from this chapter
+- c) VaR is purely a regulatory number with no mathematical basis
+- d) VaR only applies to single assets, never full portfolios
+
+**15. If you rebalance a portfolio's weights `w` every day but never recompute the covariance matrix `Σ`, what's the practical risk-management flaw in your ongoing `w @ Σ @ w` calculations?**
+- a) There's no flaw — the covariance matrix never changes in reality
+- b) You'd be measuring risk against a stale picture of how assets move together; if correlations shift (a common event in stressed markets), your portfolio variance number would be systematically wrong even though the formula and weights are both current and correct
+- c) The formula requires recomputing `w`, not `Σ`, so this is a non-issue
+- d) This only matters if the portfolio has fewer than 5 assets
+
+---
+
+### Answer key
+
+1. b — the dot product is the entire operation; "adding returns together" ignores weighting completely.
+2. b — (time, assets) is the standard convention because you almost always want per-asset statistics computed across the time axis; getting it backwards means `np.cov` operates on the wrong axis silently.
+3. b — high positive co-movement is exactly why "more assets" doesn't automatically mean "more diversified."
+4. b — `rowvar` is one of the most common silent-bug sources in early quant code; with more days than assets, you almost always want `rowvar=False`.
+5. b — variance computed on price levels (which trend and compound) is not a meaningful risk quantity; returns are stationary-ish and are what risk models are built on.
+6. b — this is literally what "percent of variance explained" means in a PCA/risk-factor report.
+7. b — this is the mathematical reason "just add more assets" is a beginner mistake; the off-diagonal terms in Σ can dominate.
+8. b — marginal contribution to risk is a vector precisely because it's asset-specific; risk desks use this exact object to find concentration risk.
+9. b — correlation is a normalized, unit-free version of covariance; you need covariance's actual units for variance calculations like `w @ Σ @ w`.
+10. b — regime change / correlation breakdown in crises is the classic critique of any historical-covariance-based risk model, PCA included.
+11. b — variance is one scalar summary; two very different portfolios can share it while differing wildly in tail risk or factor exposure.
+12. b — rank-deficiency (more assets than observations) is the textbook cause of a singular sample covariance matrix, and it directly breaks anything needing the matrix inverse.
+13. b — walking through the shapes (n×n · n×1 → n×1, then n×1 · n×1 → scalar) is exactly why the "matrix in the middle" still produces one number.
+14. b — VaR is essentially portfolio volatility from this chapter's machinery, scaled by a chosen confidence level's distributional quantile; Module 8 formalizes exactly this.
+15. b — a stale covariance matrix is a real, common risk-management failure mode: correct weights and a correct formula still give you a wrong risk number if Σ no longer reflects how assets currently move together.
+
+---
+
+## Hands-on challenge: find the bug yourself
+
+No more multiple choice — use the terminal below like a real shell.
+It supports `ls`, `cd`, `cat`, `pwd`, and `clear`. A risk analyst left
+behind a script and the log output it produced right before a number
+came out wrong. Find the evidence and report which function call is
+the bug.
+
+<TerminalChallenge
+  task="A portfolio risk script is producing a nonsense volatility number. Find the script and its debug log in /home/user/risk-report/ and report which line/function call is the bug."
+  startPath="/home/user"
+  expectedAnswer="np.cov(returns)"
+  hints={[
+    "Start with `ls /home/user/risk-report` to see what's there.",
+    "`cat` both the script and the debug log — the log prints the shape of every array right before the crash-adjacent line.",
+    "Compare the shape of `cov_matrix` in the log to the shape of `w`. One of them doesn't match what a 5-asset, 60-day dataset should produce."
+  ]}
+  filesystem={{
+    type: "dir",
+    children: {
+      home: {
+        type: "dir",
+        children: {
+          user: {
+            type: "dir",
+            children: {
+              "risk-report": {
+                type: "dir",
+                children: {
+                  "compute_risk.py": {
+                    type: "file",
+                    content: "import numpy as np\n\n# 60 days of returns for 5 assets\nreturns = np.random.normal(0.0004, 0.012, size=(60, 5))\nprint(f\"returns.shape = {returns.shape}\")\n\nw = np.array([0.3, 0.25, 0.2, 0.15, 0.1])\nprint(f\"w.shape = {w.shape}\")\n\ncov_matrix = np.cov(returns)\nprint(f\"cov_matrix.shape = {cov_matrix.shape}\")\n\nportfolio_variance = w @ cov_matrix @ w\nportfolio_vol = np.sqrt(portfolio_variance)\nprint(f\"Portfolio volatility: {portfolio_vol:.4f}\")"
+                  },
+                  "debug.log": {
+                    type: "file",
+                    content: "2026-02-03 09:14:02 returns.shape = (60, 5)\n2026-02-03 09:14:02 w.shape = (5,)\n2026-02-03 09:14:02 cov_matrix.shape = (60, 60)\n2026-02-03 09:14:03 ERROR shapes (5,) and (60,60) not aligned: 5 (dim 0) != 60 (dim 0)\n2026-02-03 09:14:03 FATAL portfolio_variance calculation failed"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }}
+/>
+
+**Why this is the bug**: `np.cov(returns)` should be
+`np.cov(returns, rowvar=False)` — with 60 rows (days) and 5 columns
+(assets), the default `rowvar=True` treats each of the 60 days as a
+separate variable, producing a 60×60 covariance matrix instead of the
+5×5 one the 5-element weight vector actually needs. The `debug.log`
+shape mismatch (`(5,)` vs `(60,60)`) is the exact signature of this
+mistake — the one you'll want to recognize instantly for the rest of
+this path.
