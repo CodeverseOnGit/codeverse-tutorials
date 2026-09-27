@@ -341,22 +341,30 @@ roughly easy → hard.
 
 ---
 
-## Hands-on challenge: find the bug yourself
+## Hands-on challenge: the desk's risk number is wrong
 
-No more multiple choice — use the terminal below like a real shell.
-It supports `ls`, `cd`, `cat`, `pwd`, and `clear`. A risk analyst left
-behind a script and the log output it produced right before a number
-came out wrong. Find the evidence and report which function call is
-the bug.
+Use the terminal below like a real shell (`ls`, `cd`, `cat`, `pwd`,
+`clear`). This isn't a syntax bug hunt — it's a scenario you'll hit
+for real on a risk desk: **the reported portfolio volatility is
+absurd, the code runs fine, and nobody can immediately say why.**
+
+You're the new risk analyst. A trader is asking why the desk's
+"5-day portfolio volatility" report suddenly shows 340% — a number
+that's obviously wrong for a diversified equity portfolio, but the
+script didn't crash and produced a real float. Dig through the
+handoff notes, the holdings, and the input data in
+`/home/user/risk-desk/` and diagnose **what's conceptually wrong
+with the calculation** — not a typo, a misunderstanding of what
+should feed a covariance matrix.
 
 <TerminalChallenge
-  task="A portfolio risk script is producing a nonsense volatility number. Find the script and its debug log in /home/user/risk-report/ and report which line/function call is the bug."
+  task="The desk's portfolio volatility report shows 340%, which is nonsensical for this portfolio. Investigate /home/user/risk-desk/ and state, in one sentence, the conceptual mistake behind the number — not a syntax error."
   startPath="/home/user"
-  expectedAnswer="np.cov(returns)"
+  expectedAnswer="the covariance matrix was built from raw prices instead of returns"
   hints={[
-    "Start with `ls /home/user/risk-report` to see what's there.",
-    "`cat` both the script and the debug log — the log prints the shape of every array right before the crash-adjacent line.",
-    "Compare the shape of `cov_matrix` in the log to the shape of `w`. One of them doesn't match what a 5-asset, 60-day dataset should produce."
+    "Start with `ls /home/user/risk-desk` and `cat handoff_notes.txt` — the previous analyst left context.",
+    "Compare `cat portfolio_prices.csv` with `cat portfolio_returns.csv`. Notice which one the script in `calculate_var.py` actually reads from.",
+    "Recall section 5 of this chapter: portfolio variance is only meaningful when Σ is built from returns. Prices trend and compound, so their 'covariance' is dominated by the trend, not by co-movement risk."
   ]}
   filesystem={{
     type: "dir",
@@ -367,16 +375,28 @@ the bug.
           user: {
             type: "dir",
             children: {
-              "risk-report": {
+              "risk-desk": {
                 type: "dir",
                 children: {
-                  "compute_risk.py": {
+                  "handoff_notes.txt": {
                     type: "file",
-                    content: "import numpy as np\n\n# 60 days of returns for 5 assets\nreturns = np.random.normal(0.0004, 0.012, size=(60, 5))\nprint(f\"returns.shape = {returns.shape}\")\n\nw = np.array([0.3, 0.25, 0.2, 0.15, 0.1])\nprint(f\"w.shape = {w.shape}\")\n\ncov_matrix = np.cov(returns)\nprint(f\"cov_matrix.shape = {cov_matrix.shape}\")\n\nportfolio_variance = w @ cov_matrix @ w\nportfolio_vol = np.sqrt(portfolio_variance)\nprint(f\"Portfolio volatility: {portfolio_vol:.4f}\")"
+                    content: "Handoff notes - EOD risk report\n\nInherited this script from the last analyst. It runs without\nerrors and produces a number every day, so it's presumably\nbeen 'working' - but today's 5-day vol reading of 340% is not\nremotely plausible for this book (4 large-cap equities, roughly\nequal weights, nothing exotic). Trader wants an explanation\nbefore the desk trusts the number again.\n\nData folder has both portfolio_prices.csv and\nportfolio_returns.csv - not sure why both exist, might be worth\nchecking which one calculate_var.py is actually reading."
                   },
-                  "debug.log": {
+                  "portfolio_prices.csv": {
                     type: "file",
-                    content: "2026-02-03 09:14:02 returns.shape = (60, 5)\n2026-02-03 09:14:02 w.shape = (5,)\n2026-02-03 09:14:02 cov_matrix.shape = (60, 60)\n2026-02-03 09:14:03 ERROR shapes (5,) and (60,60) not aligned: 5 (dim 0) != 60 (dim 0)\n2026-02-03 09:14:03 FATAL portfolio_variance calculation failed"
+                    content: "day,AAPL,MSFT,JPM,XOM\n1,182.30,410.20,195.10,118.40\n2,184.10,412.85,196.40,119.05\n3,186.75,415.30,197.80,120.10\n4,188.20,419.10,198.50,121.30\n5,190.40,421.75,199.90,122.00"
+                  },
+                  "portfolio_returns.csv": {
+                    type: "file",
+                    content: "day,AAPL,MSFT,JPM,XOM\n2,0.0099,0.0065,0.0067,0.0055\n3,0.0144,0.0059,0.0071,0.0088\n4,0.0078,0.0092,0.0035,0.0100\n5,0.0117,0.0063,0.0071,0.0058"
+                  },
+                  "calculate_var.py": {
+                    type: "file",
+                    content: "import numpy as np\nimport pandas as pd\n\n# NOTE: reading the prices file, not the returns file\ndata = pd.read_csv('portfolio_prices.csv', index_col='day')\n\nw = np.array([0.25, 0.25, 0.25, 0.25])\n\ncov_matrix = np.cov(data.values, rowvar=False)\nportfolio_variance = w @ cov_matrix @ w\nportfolio_vol = np.sqrt(portfolio_variance)\n\nprint(f\"5-day portfolio volatility: {portfolio_vol:.2%}\")"
+                  },
+                  "output.log": {
+                    type: "file",
+                    content: "2026-02-03 17:02:11 Loaded portfolio_prices.csv, shape (5, 4)\n2026-02-03 17:02:11 Computed cov_matrix, shape (4, 4)\n2026-02-03 17:02:11 5-day portfolio volatility: 340.00%\n2026-02-03 17:02:11 Report generated successfully - no errors"
                   }
                 }
               }
@@ -388,11 +408,14 @@ the bug.
   }}
 />
 
-**Why this is the bug**: `np.cov(returns)` should be
-`np.cov(returns, rowvar=False)` — with 60 rows (days) and 5 columns
-(assets), the default `rowvar=True` treats each of the 60 days as a
-separate variable, producing a 60×60 covariance matrix instead of the
-5×5 one the 5-element weight vector actually needs. The `debug.log`
-shape mismatch (`(5,)` vs `(60,60)`) is the exact signature of this
-mistake — the one you'll want to recognize instantly for the rest of
-this path.
+**Why this is the mistake**: `calculate_var.py` builds `cov_matrix`
+from `portfolio_prices.csv`, not `portfolio_returns.csv`. Prices for
+a healthy portfolio trend upward together almost every day — that
+shared upward drift produces enormous, mostly-meaningless "covariance"
+values, since price levels aren't stationary the way returns roughly
+are. The script never errors, the shapes all line up, and it still
+outputs a completely unusable risk number — exactly the "silently
+wrong, not crashing" failure mode that's far more dangerous on a real
+desk than a script that throws an exception. The fix isn't a syntax
+change; it's reading `portfolio_returns.csv` instead, which is
+precisely the returns-vs-prices distinction from Quiz question 5.
